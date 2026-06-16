@@ -1,0 +1,63 @@
+# kingfisher-airband — copy to ~/.config/kingfisher-airband/config.yaml
+
+http_addr: "127.0.0.1:7355"
+data_dir: "~/.local/share/kingfisher-airband"
+
+kingfisher:
+  base_url: "http://127.0.0.1:8080"
+  poll_interval_s: 10
+
+aircraft:
+  callsign: "N35B"  # used for direction heuristic; override from kingfisher config when available
+
+sdr:
+  enabled: true
+  rtl_airband_bin: "/usr/local/bin/rtl_airband"
+  gain: 25
+  correction_ppm: 0
+  sample_rate: 2.4  # MHz bandwidth for multichannel
+  # When no dongle is present, set enabled: false and use dev_replay below.
+
+channels:
+  # Static watch list (MHz). Planner may add GPS/howgozit freqs.
+  - freq_mhz: 119.25
+    label: "KSBA TWR"
+    role: tower
+  - freq_mhz: 121.9
+    label: "KSBA GND"
+    role: ground
+  - freq_mhz: 124.65
+    label: "KSBA ATIS"
+    role: atis
+
+planner:
+  multichannel_max_span_mhz: 2.4
+  ground_speed_max_kt: 40
+  atis_scan_dwell_s: 8
+  atis_scan_interval_s: 90
+
+stt:
+  model: "jacktol/whisper-medium.en-fine-tuned-for-ATC-faster-whisper"
+  compute_type: "int8"
+  beam_size: 1
+  language: "en"
+  initial_prompt: "Aviation air traffic control radio."
+  min_segment_s: 0.8
+  max_segment_s: 30.0
+  atis_min_duration_s: 25.0
+
+howgozit:
+  atc_comms_log_id: ""   # auto-resolve from template_id atc_comms
+  atis_log_id: ""
+  atc_radio_log_id: ""   # poll latest freq_mhz for active COM
+
+record:
+  enabled: true
+  format: flac
+  retention_days: 30
+
+dev_replay:
+  enabled: false
+  wav_path: ""
+  freq_mhz: 119.25
+  interval_s: 30
