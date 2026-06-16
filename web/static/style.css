@@ -1,0 +1,58 @@
+:root {
+  color-scheme: dark;
+  --bg: #0d1117;
+  --panel: #161b22;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --atc: #58a6ff;
+  --pilot: #3fb950;
+  --border: #30363d;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+h1 { margin: 0; font-size: 1.1rem; }
+.disclaimer { margin: 4px 0 8px; font-size: 0.75rem; color: #d29922; }
+.status { font-size: 0.8rem; color: var(--muted); }
+.feed {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.card .meta {
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.card .text {
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+.card.atc .text { color: var(--atc); }
+.card.pilot .text { color: var(--pilot); }
+.card button {
+  margin-top: 8px;
+  background: #21262d;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 6px 10px;
+  touch-action: manipulation;
+}
