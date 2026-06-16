@@ -1,0 +1,20 @@
+[Unit]
+Description=Kingfisher airband ATC monitor (RTL-SDR + STT)
+After=network-online.target kingfisher.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=eric
+Group=plugdev
+Environment=PYTHONUNBUFFERED=1
+Environment=XDG_CONFIG_HOME=/home/eric/.config
+WorkingDirectory=/home/eric/go/src/github.com/westphae/kingfisher-airband
+ExecStart=/home/eric/.local/bin/uv run airband -c /home/eric/.config/kingfisher-airband/config.yaml
+Restart=on-failure
+RestartSec=10
+Nice=5
+CPUQuota=70%
+
+[Install]
+WantedBy=multi-user.target

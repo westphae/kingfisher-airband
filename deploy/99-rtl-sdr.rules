@@ -1,0 +1,3 @@
+# Stable symlink for RTL-SDR dongles (NooElec SMArt v5 and compatibles)
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="2838", SYMLINK+="rtl_sdr", MODE="0664", GROUP="plugdev"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="2832", SYMLINK+="rtl_sdr", MODE="0664", GROUP="plugdev"
