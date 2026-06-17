@@ -136,8 +136,10 @@ cd ~/go/src/github.com/westphae/kingfisher-airband   # or your clone path
 uv sync
 ```
 
-First `uv run airband` will download the ATC fine-tuned Whisper model (~hundreds
-of MB) into `~/.local/share/kingfisher-airband/models/` (via Hugging Face cache).
+First `uv run airband` downloads the ATC Whisper model on **first transcribed
+segment** (not at startup). Weights land under `data_dir/models/` (and Hugging
+Face cache). Empty `models/` and `rtl_airband/` at startup is normal — they fill
+only after audio is received.
 
 ### 6. Configure channels and Kingfisher URL
 
@@ -283,7 +285,9 @@ release if not present yet).
 | `Failed to open rtlsdr device` | udev rule installed? user in `plugdev`? re-login after `usermod`. Blacklist DVB driver. |
 | No `/dev/rtl_sdr` | Re-plug dongle; `sudo udevadm trigger`. |
 | `rtl_airband not found` | Build/install RTLSDR-Airband; set `sdr.rtl_airband_bin` in config. |
-| UI loads but no transcripts | Traffic on configured freqs? Lower squelch via gain tuning. Check `journalctl -u kingfisher-airband`. |
+| UI loads but no transcripts | Traffic on configured freqs? Check `/api/health` — `sdr_running` must be `true`. If `sdr_error` is set, rtl_airband crashed (often bad scan config or dongle access). `journalctl` / foreground logs. |
+| `sdr_running: true` but empty `rtl_airband/` | rtl_airband died as zombie — restart airband after upgrading; check `sdr_error` in `/api/health`. |
+| Empty `models/` overnight | Normal until first audio segment is transcribed. |
 | UDP capture empty in spike | Normal if no transmissions during the 15 s window; try a busy frequency or live ATIS cycle. |
 | STT very slow | Expected on Pi CPU for `medium` model; first model load is slow. Segments queue; active COM channel is prioritized. |
 | `kingfisher_ok: false` in `/api/health` | Kingfisher not running or wrong `base_url` — transcripts still work locally. |
