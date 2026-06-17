@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SPIKE_DIR="${SPIKE_DIR:-/tmp/kingfisher-airband-spike}"
-FREQ_MHZ="${FREQ_MHZ:-119.25}"
+FREQ_MHZ="${FREQ_MHZ:-119.7}"
 UDP_PORT="${UDP_PORT:-7356}"
 GAIN="${GAIN:-25}"
 RTL_AIRBAND="${RTL_AIRBAND:-/usr/local/bin/rtl_airband}"
