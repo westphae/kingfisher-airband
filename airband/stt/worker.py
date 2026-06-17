@@ -37,9 +37,11 @@ class STTWorker:
         cfg: STTCfg,
         *,
         callsign: str = "",
+        model_dir: str | None = None,
         on_result: Callable[[TranscriptResult], None] | None = None,
     ) -> None:
         self._cfg = cfg
+        self._model_dir = model_dir
         self._callsign = callsign
         self._on_result = on_result
         self._q: queue.PriorityQueue[tuple[int, int, AudioSegment]] = queue.PriorityQueue()
@@ -55,11 +57,13 @@ class STTWorker:
 
         log.info("loading STT model %s (%s)...", self._cfg.model, self._cfg.compute_type)
         t0 = time.perf_counter()
-        self._model = WhisperModel(
-            self._cfg.model,
-            device="cpu",
-            compute_type=self._cfg.compute_type,
-        )
+        kwargs: dict = {
+            "device": "cpu",
+            "compute_type": self._cfg.compute_type,
+        }
+        if self._model_dir:
+            kwargs["download_root"] = self._model_dir
+        self._model = WhisperModel(self._cfg.model, **kwargs)
         log.info("STT model loaded in %.1fs", time.perf_counter() - t0)
 
     def enqueue(self, seg: AudioSegment, *, priority: int = 5) -> None:

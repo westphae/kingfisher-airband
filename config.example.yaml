@@ -13,9 +13,11 @@ aircraft:
 sdr:
   enabled: true
   rtl_airband_bin: "/usr/local/bin/rtl_airband"
+  index: 0
   gain: 25
   correction_ppm: 0
   sample_rate: 2.4  # MHz bandwidth for multichannel
+  squelch_snr_threshold: 10
   # When no dongle is present, set enabled: false and use dev_replay below.
 
 channels:

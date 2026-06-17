@@ -9,6 +9,16 @@ from pathlib import Path
 
 from airband.config import ChannelCfg, Config, PlannerCfg
 
+_ROLE_PRIORITY = {
+    "active": 0,
+    "tower": 1,
+    "ground": 2,
+    "departure": 3,
+    "approach": 4,
+    "atis": 5,
+    "comms": 6,
+}
+
 
 @dataclass
 class PlannedChannel:
@@ -16,7 +26,18 @@ class PlannedChannel:
     label: str
     role: str
     udp_port: int
+
+
+@dataclass
+class RadioPlan:
+    """Device plan passed to rtl_airband config generator."""
+
     mode: str  # multichannel | scan
+    channels: list[PlannedChannel]
+
+    @property
+    def is_scan(self) -> bool:
+        return self.mode == "scan"
 
 
 @dataclass
@@ -76,13 +97,20 @@ def merge_channels(*groups: list[ChannelCfg]) -> list[ChannelCfg]:
     return sorted(seen.values(), key=lambda c: c.freq_mhz)
 
 
+def _sort_scan_order(channels: list[ChannelCfg]) -> list[ChannelCfg]:
+    return sorted(
+        channels,
+        key=lambda c: (_ROLE_PRIORITY.get(c.role, 99), c.freq_mhz),
+    )
+
+
 def plan_channels(
     cfg: Config,
     *,
     active_freq_mhz: float | None = None,
     gps: GPSFix | None = None,
     airports_path: Path | None = None,
-) -> list[PlannedChannel]:
+) -> RadioPlan:
     """Build receive plan with UDP port assignments."""
     static = list(cfg.channels)
     dynamic: list[ChannelCfg] = []
@@ -107,21 +135,26 @@ def plan_channels(
     pl: PlannerCfg = cfg.planner
     use_multichannel = span <= pl.multichannel_max_span_mhz and len(merged) > 1
 
-    # On ground: prefer tower+ground if in list
-    on_ground = gps and gps.has_fix and (gps.speed_m_s * 1.94384) < pl.ground_speed_max_kt
-
-    planned: list[PlannedChannel] = []
-    for i, ch in enumerate(merged):
-        mode = "multichannel" if use_multichannel else "scan"
-        if not use_multichannel and on_ground and ch.role in ("tower", "ground", "active"):
-            mode = "scan"
-        planned.append(
+    if use_multichannel:
+        planned = [
             PlannedChannel(
                 freq_mhz=ch.freq_mhz,
                 label=ch.label or f"{ch.freq_mhz:.3f} MHz",
                 role=ch.role,
                 udp_port=cfg.udp_base_port + i,
-                mode=mode,
             )
+            for i, ch in enumerate(merged)
+        ]
+        return RadioPlan(mode="multichannel", channels=planned)
+
+    ordered = _sort_scan_order(merged)
+    planned = [
+        PlannedChannel(
+            freq_mhz=ch.freq_mhz,
+            label=ch.label or f"{ch.freq_mhz:.3f} MHz",
+            role=ch.role,
+            udp_port=cfg.udp_base_port,
         )
-    return planned
+        for ch in ordered
+    ]
+    return RadioPlan(mode="scan", channels=planned)

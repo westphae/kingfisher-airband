@@ -30,6 +30,7 @@ class TranscriptStore:
         self._items: deque[TranscriptResult] = deque(maxlen=max_items)
         self._channels: list[ChannelStatus] = []
         self._sdr_running = False
+        self._sdr_error = ""
         self._kingfisher_ok = False
 
     def add(self, t: TranscriptResult) -> None:
@@ -51,9 +52,10 @@ class TranscriptStore:
         with self._lock:
             self._channels = channels
 
-    def set_sdr_running(self, v: bool) -> None:
+    def set_sdr_running(self, v: bool, error: str = "") -> None:
         with self._lock:
             self._sdr_running = v
+            self._sdr_error = error
 
     def set_kingfisher_ok(self, v: bool) -> None:
         with self._lock:
@@ -64,6 +66,7 @@ class TranscriptStore:
             return {
                 "ok": True,
                 "sdr_running": self._sdr_running,
+                "sdr_error": self._sdr_error,
                 "kingfisher_ok": self._kingfisher_ok,
                 "transcript_count": len(self._items),
                 "channels": [asdict(c) for c in self._channels],

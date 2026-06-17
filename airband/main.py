@@ -17,7 +17,7 @@ from airband.atis.parser import atis_to_howgozit_values, parse_atis
 from airband.config import Config, default_config_path, load_config
 from airband.ingest.udp import AudioSegment, UDPSegmentReceiver
 from airband.kingfisher.client import KingfisherClient
-from airband.planner.channels import plan_channels
+from airband.planner.channels import RadioPlan, plan_channels
 from airband.record.flac import write_flac
 from airband.sdr.rtl_airband import RTLAirbandProcess
 from airband.stt.worker import STTWorker, TranscriptResult
@@ -36,7 +36,12 @@ class Daemon:
         self._active_freq: float | None = None
         self._callsign = cfg.aircraft.get("callsign", "")
 
-        self.stt = STTWorker(cfg.stt, callsign=self._callsign, on_result=self._on_transcript)
+        self.stt = STTWorker(
+            cfg.stt,
+            callsign=self._callsign,
+            model_dir=str(cfg.models_dir),
+            on_result=self._on_transcript,
+        )
 
     def _on_segment(self, seg: AudioSegment) -> None:
         priority = 0 if seg.role in ("active", "tower") else 5
@@ -74,38 +79,63 @@ class Daemon:
             self._callsign = cs
             self.stt._callsign = cs
         self._active_freq = self.kf.latest_active_freq_mhz()
-        planned = plan_channels(
+        plan = plan_channels(
             self.cfg,
             active_freq_mhz=self._active_freq,
             gps=gps,
         )
         self._stop_receivers()
-        self.sdr.start(planned)
-        self.store.set_sdr_running(self.sdr.running)
+        self.sdr.start(plan)
+        self.store.set_sdr_running(self.sdr.running, self.sdr.last_error)
         ch_status = [
             ChannelStatus(
                 freq_mhz=p.freq_mhz,
                 label=p.label,
                 role=p.role,
                 udp_port=p.udp_port,
-                mode=p.mode,
+                mode=plan.mode,
             )
-            for p in planned
+            for p in plan.channels
         ]
         self.store.set_channels(ch_status)
-        for p in planned:
+        if plan.is_scan:
             rx = UDPSegmentReceiver(
-                p.udp_port,
-                p.freq_mhz,
-                p.label,
-                p.role,
-                self._on_segment,
+                plan.channels[0].udp_port,
+                0.0,
+                "SCAN",
+                "scan",
+                lambda seg: self._on_segment(self._tag_scan_segment(seg, plan)),
                 min_segment_s=self.cfg.stt.min_segment_s,
                 max_segment_s=self.cfg.stt.max_segment_s,
             )
             rx.start()
             self._receivers.append(rx)
-        log.info("plan: %d channels, active=%s", len(planned), self._active_freq)
+        else:
+            for p in plan.channels:
+                rx = UDPSegmentReceiver(
+                    p.udp_port,
+                    p.freq_mhz,
+                    p.label,
+                    p.role,
+                    self._on_segment,
+                    min_segment_s=self.cfg.stt.min_segment_s,
+                    max_segment_s=self.cfg.stt.max_segment_s,
+                )
+                rx.start()
+                self._receivers.append(rx)
+        log.info(
+            "plan: mode=%s freqs=%d active=%s sdr_running=%s",
+            plan.mode,
+            len(plan.channels),
+            self._active_freq,
+            self.sdr.running,
+        )
+
+    def _tag_scan_segment(self, seg: AudioSegment, plan: RadioPlan) -> AudioSegment:
+        # Scan mode does not tag frequency in the UDP stream; keep audio, label as scan.
+        seg.label = "SCAN"
+        seg.role = "scan"
+        return seg
 
     def _stop_receivers(self) -> None:
         for rx in self._receivers:
@@ -115,6 +145,9 @@ class Daemon:
     def _poll_kingfisher(self) -> None:
         while not self._stop.is_set():
             try:
+                if self.cfg.sdr.enabled and not self.sdr.running:
+                    log.warning("rtl_airband not running — restarting")
+                    self._apply_plan()
                 gps = self.kf.fetch_gps()
                 self.store.set_kingfisher_ok(gps.has_fix or True)
                 freq = self.kf.latest_active_freq_mhz()

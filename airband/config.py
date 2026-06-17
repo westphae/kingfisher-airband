@@ -31,9 +31,11 @@ class ChannelCfg:
 class SDRCfg:
     enabled: bool = True
     rtl_airband_bin: str = "/usr/local/bin/rtl_airband"
+    index: int = 0
     gain: int = 25
     correction_ppm: int = 0
     sample_rate: float = 2.4
+    squelch_snr_threshold: float = 10.0
 
 
 @dataclass
@@ -143,9 +145,11 @@ def load_config(path: str | Path) -> Config:
         sdr=SDRCfg(
             enabled=bool(sdr_raw.get("enabled", True)),
             rtl_airband_bin=str(sdr_raw.get("rtl_airband_bin", "/usr/local/bin/rtl_airband")),
+            index=int(sdr_raw.get("index", 0)),
             gain=int(sdr_raw.get("gain", 25)),
             correction_ppm=int(sdr_raw.get("correction_ppm", 0)),
             sample_rate=float(sdr_raw.get("sample_rate", 2.4)),
+            squelch_snr_threshold=float(sdr_raw.get("squelch_snr_threshold", 10.0)),
         ),
         channels=_parse_channels(raw.get("channels") or []),
         planner=PlannerCfg(
