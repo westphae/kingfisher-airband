@@ -1,5 +1,7 @@
 # kingfisher-airband
 
+If you are picking this up after a pause, start with [docs/STATUS.md](docs/STATUS.md) (architecture, kf-pi state, and next steps), then come back here for the full setup guide.
+
 Offline VHF airband monitor for the Kingfisher Pi: RTLSDR-Airband demodulates AM
 tower/ground/ATIS channels, faster-whisper transcribes squelch-open segments, and
 results appear in a local web UI (and optionally in Kingfisher howgozit logs).
@@ -136,10 +138,17 @@ cd ~/go/src/github.com/westphae/kingfisher-airband   # or your clone path
 uv sync
 ```
 
-First `uv run airband` downloads the ATC Whisper model on **first transcribed
-segment** (not at startup). Weights land under `data_dir/models/` (and Hugging
-Face cache). Empty `models/` and `rtl_airband/` at startup is normal — they fill
-only after audio is received.
+**Download the STT model while you still have internet** (~3 GB). This is a
+one-time step before flight; the daemon will not fetch weights on demand when
+`stt.local_files_only` is true (default):
+
+```bash
+./scripts/download-model.sh
+# or: uv run airband-download-model -c ~/.config/kingfisher-airband/config.yaml
+```
+
+Weights land under `data_dir/models/`. Empty `archive/rtl_airband/` at startup
+is normal — those dirs fill only after squelch-open audio.
 
 ### 6. Configure channels and Kingfisher URL
 
@@ -150,17 +159,20 @@ cp config.example.yaml ~/.config/kingfisher-airband/config.yaml
 
 Edit `~/.config/kingfisher-airband/config.yaml`:
 
-1. **`channels`** — set frequencies you can actually hear (MHz). Example file
-   defaults to KSBA tower/ground/ATIS. Change labels and freqs for your home
-   airport; add entries to `data/airports/frequencies.json` for GPS-based
-   planning near other fields.
-2. **`kingfisher.base_url`** — URL of the running Kingfisher cockpit
+1. **`channels`** — set frequencies you can actually hear (MHz). Use
+   `enabled: false` on any row you want to keep in the file but **not** monitor
+   (handy for home testing). With a single enabled channel, airband tunes that
+   frequency continuously instead of scanning.
+2. **`planner.include_gps_airport`** / **`planner.include_active_com`** — set
+   both to `false` at home so GPS and howgozit ATC Radio do not add extra
+   frequencies to the scan list.
+3. **`kingfisher.base_url`** — URL of the running Kingfisher cockpit
    (default `http://127.0.0.1:8080`). If Kingfisher is not running, transcripts
    still work; howgozit inserts are skipped.
-3. **`aircraft.callsign`** — your N-number (used for pilot vs ATC heuristic).
-4. **`sdr.gain`** — start at `25`; raise if weak signal, lower if overload
+4. **`aircraft.callsign`** — your N-number (used for pilot vs ATC heuristic).
+5. **`sdr.gain`** — start at `25`; raise if weak signal, lower if overload
    (breaks squelch).
-5. **`sdr.rtl_airband_bin`** — path from `which rtl_airband` if not
+6. **`sdr.rtl_airband_bin`** — path from `which rtl_airband` if not
    `/usr/local/bin/rtl_airband`.
 
 To run **without a dongle** (STT/API/UI dev only): set `sdr.enabled: false`.
@@ -183,7 +195,8 @@ uv run airband -c ~/.config/kingfisher-airband/config.yaml
 
 On first start expect:
 
-- `loading STT model ...` (one-time; may take 1–2 minutes on Pi 5)
+- `STT model cached at ...` (fails fast if you skipped the download step)
+- `loading STT model ...` then `STT model loaded in ...s` (preload; ~30–60 s on Pi 5)
 - `started rtl_airband pid=...` when the dongle is present
 - `UDP ingest listening on :7356 ...` per configured channel
 
@@ -192,6 +205,11 @@ Open the transcript UI on the Pi or from a tablet on the same LAN:
 ```
 http://127.0.0.1:7355/
 ```
+
+The **Monitor** panel lists configured frequencies as toggles. Tap a chip to
+enable/disable it; changes apply immediately (brief SDR restart). Checkboxes
+below control whether GPS airport freqs and howgozit active COM are added
+automatically. Choices are saved back to your config YAML.
 
 The page polls every 2 s. When someone transmits on a watched frequency and
 squelch opens, you should see a card within **roughly 5–20 s after the
@@ -285,11 +303,11 @@ release if not present yet).
 | `Failed to open rtlsdr device` | udev rule installed? user in `plugdev`? re-login after `usermod`. Blacklist DVB driver. |
 | No `/dev/rtl_sdr` | Re-plug dongle; `sudo udevadm trigger`. |
 | `rtl_airband not found` | Build/install RTLSDR-Airband; set `sdr.rtl_airband_bin` in config. |
-| UI loads but no transcripts | Traffic on configured freqs? Check `/api/health` — `sdr_running` must be `true`. If `sdr_error` is set, rtl_airband crashed (often bad scan config or dongle access). `journalctl` / foreground logs. |
+| UI loads but no transcripts | Traffic on configured freqs? Check `/api/health` — `sdr_running` and `stt_ready` must be `true`. If `stt_error` or startup log says model not cached, run `./scripts/download-model.sh` while online. |
 | `sdr_running: true` but empty `rtl_airband/` | rtl_airband died as zombie — restart airband after upgrading; check `sdr_error` in `/api/health`. |
-| Empty `models/` overnight | Normal until first audio segment is transcribed. |
+| Daemon exits at startup: model not found | Run `./scripts/download-model.sh` on the ground with internet. Partial downloads (`*.incomplete` under `models/`) must finish or be removed before retry. |
 | UDP capture empty in spike | Normal if no transmissions during the 15 s window; try a busy frequency or live ATIS cycle. |
-| STT very slow | Expected on Pi CPU for `medium` model; first model load is slow. Segments queue; active COM channel is prioritized. |
+| STT very slow per segment | Expected on Pi CPU for `medium` model. Weights preload at startup (`stt.preload_at_startup`); inference still takes several seconds per segment. |
 | `kingfisher_ok: false` in `/api/health` | Kingfisher not running or wrong `base_url` — transcripts still work locally. |
 
 STT-only test on a saved WAV:
