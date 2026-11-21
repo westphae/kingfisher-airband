@@ -17,7 +17,20 @@ try:
 except ImportError:
     webrtcvad = None  # type: ignore
 
+from airband.ingest.live import LIVE_AUDIO
+
 log = logging.getLogger(__name__)
+class IngestStats:
+    """UDP ingest counters (shared across receivers for /api/health)."""
+
+    udp_packets: int = 0
+    udp_bytes: int = 0
+    last_peak: float = 0.0
+    last_packet_ts_ns: int = 0
+    segments_emitted: int = 0
+
+
+INGEST_STATS = IngestStats()
 
 SAMPLE_RATE_IN = 8000
 SAMPLE_RATE_OUT = 16000
@@ -57,6 +70,7 @@ class UDPSegmentReceiver:
         min_segment_s: float = 0.8,
         max_segment_s: float = 30.0,
         silence_tail_s: float = 0.35,
+        mirror_live: bool = False,
     ) -> None:
         self.port = port
         self.freq_mhz = freq_mhz
@@ -66,6 +80,7 @@ class UDPSegmentReceiver:
         self.min_segment_s = min_segment_s
         self.max_segment_s = max_segment_s
         self.silence_tail_s = silence_tail_s
+        self._mirror_live = mirror_live
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._buf: list[float] = []
@@ -103,6 +118,14 @@ class UDPSegmentReceiver:
         self._seg_start_ns = None
         try:
             self.on_segment(seg)
+            INGEST_STATS.segments_emitted += 1
+            log.info(
+                "segment %.1fs [%s %.3f MHz] peak_buf=%.4f",
+                seg.duration_s,
+                seg.label,
+                seg.freq_mhz,
+                float(np.max(np.abs(seg.pcm_f32))) if len(seg.pcm_f32) else 0.0,
+            )
         except Exception:
             log.exception("on_segment callback failed")
 
@@ -123,10 +146,17 @@ class UDPSegmentReceiver:
                 continue
             if len(data) < 4:
                 continue
+            if self._mirror_live:
+                LIVE_AUDIO.publish(data)
+            INGEST_STATS.udp_packets += 1
+            INGEST_STATS.udp_bytes += len(data)
             n = len(data) // 4
             samples = struct.unpack(f"{n}f", data[: n * 4])
             peak = max(abs(s) for s in samples) if samples else 0.0
-            if peak < 1e-5:
+            if peak > INGEST_STATS.last_peak * 0.5 or peak > 1e-5:
+                INGEST_STATS.last_peak = max(INGEST_STATS.last_peak * 0.995, peak)
+            INGEST_STATS.last_packet_ts_ns = time.time_ns()
+            if peak < 1e-6:
                 continue
             now_ns = time.time_ns()
             if self._seg_start_ns is None:

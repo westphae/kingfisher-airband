@@ -112,27 +112,45 @@ def plan_channels(
     airports_path: Path | None = None,
 ) -> RadioPlan:
     """Build receive plan with UDP port assignments."""
-    static = list(cfg.channels)
+    static = [ch for ch in cfg.channels if ch.enabled]
     dynamic: list[ChannelCfg] = []
+    pl: PlannerCfg = cfg.planner
 
     ap_path = airports_path or cfg.airports_path
     airports = load_airports(ap_path)
-    if gps and gps.has_fix and airports:
+    if pl.include_gps_airport and gps and gps.has_fix and airports:
         ap = nearest_airport(gps.lat, gps.lon, airports)
         if ap:
             dynamic.extend(channels_from_airport(ap))
 
-    if active_freq_mhz and active_freq_mhz > 0:
+    if pl.include_active_com and active_freq_mhz and active_freq_mhz > 0:
         dynamic.append(
             ChannelCfg(freq_mhz=active_freq_mhz, label="ACTIVE COM", role="active")
         )
 
     merged = merge_channels(static, dynamic)
     if not merged:
-        merged = [ChannelCfg(freq_mhz=121.5, label="GUARD", role="comms")]
+        enabled_static = [ch for ch in cfg.channels if ch.enabled]
+        if enabled_static:
+            merged = enabled_static
+        else:
+            merged = [ChannelCfg(freq_mhz=121.5, label="GUARD", role="comms")]
+
+    if len(merged) == 1:
+        ch = merged[0]
+        return RadioPlan(
+            mode="multichannel",
+            channels=[
+                PlannedChannel(
+                    freq_mhz=ch.freq_mhz,
+                    label=ch.label or f"{ch.freq_mhz:.3f} MHz",
+                    role=ch.role,
+                    udp_port=cfg.udp_base_port,
+                )
+            ],
+        )
 
     span = merged[-1].freq_mhz - merged[0].freq_mhz
-    pl: PlannerCfg = cfg.planner
     use_multichannel = span <= pl.multichannel_max_span_mhz and len(merged) > 1
 
     if use_multichannel:

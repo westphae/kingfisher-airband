@@ -56,3 +56,174 @@ h1 { margin: 0; font-size: 1.1rem; }
   padding: 6px 10px;
   touch-action: manipulation;
 }
+
+/* Frequency monitor panel */
+.channels-panel {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.channels-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+.channels-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.plan-mode {
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.channel-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.channel-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #21262d;
+  color: var(--text);
+  font-size: 0.8rem;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+}
+.channel-chip.on {
+  border-color: #388bfd;
+  background: #1f3a5f;
+  color: #e6edf3;
+}
+.channel-chip.off {
+  color: var(--muted);
+  background: #1c2128;
+}
+.channel-chip.pending {
+  border-color: #d29922;
+  background: #3d2e00;
+  color: #f0c14e;
+  cursor: wait;
+}
+.channel-chip.pending input {
+  accent-color: #d29922;
+}
+.channel-chip.monitored::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #3fb950;
+  margin-left: 2px;
+  flex-shrink: 0;
+}
+.chip-tag {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #3d2e00;
+  color: #f0c14e;
+  border: 1px solid #9e6a03;
+}
+.channel-chip.via-hgz.on {
+  border-color: #9e6a03;
+}
+.channel-chip input {
+  accent-color: #388bfd;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  pointer-events: none;
+}
+.auto-sources {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  font-size: 0.78rem;
+  color: var(--text);
+}
+.auto-sources label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  touch-action: manipulation;
+  color: var(--text);
+}
+.auto-sources label.pending {
+  color: #f0c14e;
+  cursor: wait;
+}
+.auto-sources label input,
+.live-audio-toggle input {
+  pointer-events: none;
+}
+.auto-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+.debug-panel {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+}
+.live-audio-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  color: var(--text);
+  touch-action: manipulation;
+}
+.live-audio-toggle.pending {
+  color: #f0c14e;
+  cursor: wait;
+}
+.live-audio-status {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+.live-audio-status.on {
+  color: #3fb950;
+}
+.live-audio-status.err {
+  color: #f85149;
+}
+.live-audio-status.pending {
+  color: #d29922;
+}
+.channels-panel.busy {
+  cursor: wait;
+}
+.channels-panel.busy .channel-chip:not(.pending),
+.channels-panel.busy .auto-sources label:not(.pending),
+.channels-panel.busy .live-audio-toggle:not(.pending) {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.channels-panel.busy .channel-chip.pending,
+.channels-panel.busy .auto-sources label.pending,
+.channels-panel.busy .live-audio-toggle.pending {
+  pointer-events: none;
+}

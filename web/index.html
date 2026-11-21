@@ -12,6 +12,21 @@
     <p class="disclaimer">Advisory transcription only — verify clearances by ear.</p>
     <div id="status" class="status">Loading…</div>
   </header>
+  <section id="channelsPanel" class="channels-panel" aria-label="Frequency selection">
+    <div class="channels-head">
+      <span class="channels-title">Monitor</span>
+      <span id="planMode" class="plan-mode"></span>
+    </div>
+    <div id="channelList" class="channel-list"></div>
+    <div id="autoSources" class="auto-sources"></div>
+    <div id="debugPanel" class="debug-panel">
+      <label id="liveAudioLabel" class="live-audio-toggle">
+        <input type="checkbox" id="liveAudioCheck">
+        <span>Live audio (debug)</span>
+      </label>
+      <span id="liveAudioStatus" class="live-audio-status">off</span>
+    </div>
+  </section>
   <main id="feed" class="feed"></main>
   <script src="/static/app.js"></script>
 </body>

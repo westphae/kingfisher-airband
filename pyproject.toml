@@ -19,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 airband = "airband.main:main"
+airband-download-model = "airband.main:download_model_main"
 
 [dependency-groups]
 dev = ["pytest>=8.0"]
