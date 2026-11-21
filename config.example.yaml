@@ -14,29 +14,40 @@ sdr:
   enabled: true
   rtl_airband_bin: "/usr/local/bin/rtl_airband"
   index: 0
-  gain: 25
+  gain: 40
   correction_ppm: 0
   sample_rate: 2.4  # MHz bandwidth for multichannel
-  squelch_snr_threshold: 10
+  # SNR squelch (dB). Lower = more sensitive. 0 = squelch always open (bench/noisy).
+  squelch_snr_threshold: 5
   # When no dongle is present, set enabled: false and use dev_replay below.
-
-channels:
-  # Static watch list (MHz). Planner may add GPS/howgozit freqs.
-  - freq_mhz: 119.25
-    label: "KSBA TWR"
-    role: tower
-  - freq_mhz: 121.9
-    label: "KSBA GND"
-    role: ground
-  - freq_mhz: 124.65
-    label: "KSBA ATIS"
-    role: atis
 
 planner:
   multichannel_max_span_mhz: 2.4
   ground_speed_max_kt: 40
   atis_scan_dwell_s: 8
   atis_scan_interval_s: 90
+  # Bench testing: monitor only enabled static channels below.
+  include_gps_airport: false
+  include_active_com: false
+
+channels:
+  # Set enabled: false to drop a frequency from the scan/watch list.
+  - freq_mhz: 124.125
+    label: "KCXO TWR"
+    role: tower
+    enabled: false
+  - freq_mhz: 120.45
+    label: "KCXO GND"
+    role: ground
+    enabled: false
+  - freq_mhz: 118.325
+    label: "KCXO ATIS"
+    role: atis
+    enabled: false
+  - freq_mhz: 119.7
+    label: "KCXO DEP"
+    role: departure
+    enabled: true
 
 stt:
   model: "jacktol/whisper-medium.en-fine-tuned-for-ATC-faster-whisper"
@@ -47,6 +58,12 @@ stt:
   min_segment_s: 0.8
   max_segment_s: 30.0
   atis_min_duration_s: 25.0
+  # false: rtl_airband squelch already segments; Whisper VAD strips AM airband.
+  vad_filter: false
+  # Require a fully cached model; never download on first transmission (flight-safe).
+  local_files_only: true
+  # Load weights into RAM before SDR/HTTP start (~30–60s once per boot).
+  preload_at_startup: true
 
 howgozit:
   atc_comms_log_id: ""   # auto-resolve from template_id atc_comms
@@ -63,3 +80,9 @@ dev_replay:
   wav_path: ""
   freq_mhz: 119.25
   interval_s: 30
+
+debug:
+  # Browser live monitor: continuous demod on UDP :7357 + WebSocket /ws/live-audio
+  live_audio: false
+  live_audio_port: 7357
+  live_audio_continuous: true

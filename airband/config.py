@@ -25,6 +25,7 @@ class ChannelCfg:
     freq_mhz: float
     label: str = ""
     role: str = "comms"  # tower, ground, atis, approach, comms
+    enabled: bool = True
 
 
 @dataclass
@@ -44,6 +45,9 @@ class PlannerCfg:
     ground_speed_max_kt: float = 40.0
     atis_scan_dwell_s: float = 8.0
     atis_scan_interval_s: float = 90.0
+    # When false, planner uses only enabled static channels (good for bench testing).
+    include_gps_airport: bool = True
+    include_active_com: bool = True
 
 
 @dataclass
@@ -56,6 +60,12 @@ class STTCfg:
     min_segment_s: float = 0.8
     max_segment_s: float = 30.0
     atis_min_duration_s: float = 25.0
+    # rtl_airband squelch + UDP silence already segment audio; Whisper VAD often
+    # strips narrowband AM ATC when enabled.
+    vad_filter: bool = False
+    local_files_only: bool = True
+    # Load weights into RAM before starting SDR / HTTP (adds ~30–60s to startup).
+    preload_at_startup: bool = True
 
 
 @dataclass
@@ -81,6 +91,15 @@ class DevReplayCfg:
 
 
 @dataclass
+class DebugCfg:
+    # Browser live monitor: extra rtl_airband UDP (continuous demod) + WebSocket.
+    live_audio: bool = False
+    live_audio_port: int = 7357
+    # true = always-on demod (hear static/squelch for tuning); false = squelch-gated fan-out.
+    live_audio_continuous: bool = True
+
+
+@dataclass
 class Config:
     http_addr: str = "127.0.0.1:7355"
     data_dir: Path = field(default_factory=lambda: Path(_expand("~/.local/share/kingfisher-airband")))
@@ -93,6 +112,7 @@ class Config:
     howgozit: HowgozitCfg = field(default_factory=HowgozitCfg)
     record: RecordCfg = field(default_factory=RecordCfg)
     dev_replay: DevReplayCfg = field(default_factory=DevReplayCfg)
+    debug: DebugCfg = field(default_factory=DebugCfg)
     udp_base_port: int = 7356
 
     @property
@@ -116,6 +136,7 @@ def _parse_channels(raw: list[dict[str, Any]]) -> list[ChannelCfg]:
                 freq_mhz=float(ch["freq_mhz"]),
                 label=str(ch.get("label", "")),
                 role=str(ch.get("role", "comms")),
+                enabled=bool(ch.get("enabled", True)),
             )
         )
     return out
@@ -133,6 +154,7 @@ def load_config(path: str | Path) -> Config:
     hgz_raw = raw.get("howgozit") or {}
     rec_raw = raw.get("record") or {}
     dev_raw = raw.get("dev_replay") or {}
+    dbg_raw = raw.get("debug") or {}
 
     cfg = Config(
         http_addr=str(raw.get("http_addr", "127.0.0.1:7355")),
@@ -157,6 +179,8 @@ def load_config(path: str | Path) -> Config:
             ground_speed_max_kt=float(pl_raw.get("ground_speed_max_kt", 40)),
             atis_scan_dwell_s=float(pl_raw.get("atis_scan_dwell_s", 8)),
             atis_scan_interval_s=float(pl_raw.get("atis_scan_interval_s", 90)),
+            include_gps_airport=bool(pl_raw.get("include_gps_airport", True)),
+            include_active_com=bool(pl_raw.get("include_active_com", True)),
         ),
         stt=STTCfg(
             model=str(stt_raw.get("model", STTCfg.model)),
@@ -167,6 +191,9 @@ def load_config(path: str | Path) -> Config:
             min_segment_s=float(stt_raw.get("min_segment_s", 0.8)),
             max_segment_s=float(stt_raw.get("max_segment_s", 30)),
             atis_min_duration_s=float(stt_raw.get("atis_min_duration_s", 25)),
+            vad_filter=bool(stt_raw.get("vad_filter", False)),
+            local_files_only=bool(stt_raw.get("local_files_only", True)),
+            preload_at_startup=bool(stt_raw.get("preload_at_startup", True)),
         ),
         howgozit=HowgozitCfg(
             atc_comms_log_id=str(hgz_raw.get("atc_comms_log_id", "")),
@@ -184,6 +211,11 @@ def load_config(path: str | Path) -> Config:
             freq_mhz=float(dev_raw.get("freq_mhz", 119.25)),
             interval_s=float(dev_raw.get("interval_s", 30)),
         ),
+        debug=DebugCfg(
+            live_audio=bool(dbg_raw.get("live_audio", False)),
+            live_audio_port=int(dbg_raw.get("live_audio_port", 7357)),
+            live_audio_continuous=bool(dbg_raw.get("live_audio_continuous", True)),
+        ),
         udp_base_port=int(raw.get("udp_base_port", 7356)),
     )
     cfg.data_dir.mkdir(parents=True, exist_ok=True)
@@ -196,3 +228,29 @@ def default_config_path() -> Path:
     xdg = os.environ.get("XDG_CONFIG_HOME")
     base = Path(xdg) if xdg else Path.home() / ".config"
     return base / "kingfisher-airband" / "config.yaml"
+
+
+def _match_freq(a: float, b: float) -> bool:
+    return round(a, 3) == round(b, 3)
+
+
+def persist_runtime_prefs(path: Path, cfg: Config) -> None:
+    """Write channel enabled flags and planner auto-source toggles back to YAML."""
+    p = Path(path)
+    with p.open() as f:
+        raw = yaml.safe_load(f) or {}
+    for item in raw.get("channels") or []:
+        freq = float(item.get("freq_mhz", 0))
+        for ch in cfg.channels:
+            if _match_freq(freq, ch.freq_mhz):
+                item["enabled"] = ch.enabled
+                break
+    pl = raw.setdefault("planner", {})
+    pl["include_gps_airport"] = cfg.planner.include_gps_airport
+    pl["include_active_com"] = cfg.planner.include_active_com
+    dbg = raw.setdefault("debug", {})
+    dbg["live_audio"] = cfg.debug.live_audio
+    dbg["live_audio_port"] = cfg.debug.live_audio_port
+    dbg["live_audio_continuous"] = cfg.debug.live_audio_continuous
+    with p.open("w") as f:
+        yaml.safe_dump(raw, f, default_flow_style=False, sort_keys=False)
