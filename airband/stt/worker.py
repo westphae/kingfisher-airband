@@ -8,12 +8,14 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
 from airband.config import STTCfg
 from airband.ingest.udp import AudioSegment
 from airband.lexicon import postprocess
+from airband.stt.model import load_whisper_model
 
 log = logging.getLogger(__name__)
 
@@ -49,22 +51,37 @@ class STTWorker:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._model = None
+        self._load_lock = threading.Lock()
+
+    @property
+    def ready(self) -> bool:
+        return self._model is not None
 
     def _load_model(self) -> None:
         if self._model is not None:
             return
-        from faster_whisper import WhisperModel
+        if not self._model_dir:
+            raise RuntimeError("STT model_dir not configured")
+        with self._load_lock:
+            if self._model is not None:
+                return
+            log.info(
+                "loading STT model %s (%s, local_only=%s)...",
+                self._cfg.model,
+                self._cfg.compute_type,
+                self._cfg.local_files_only,
+            )
+            t0 = time.perf_counter()
+            self._model = load_whisper_model(
+                self._cfg,
+                Path(self._model_dir),
+                local_files_only=self._cfg.local_files_only,
+            )
+            log.info("STT model loaded in %.1fs", time.perf_counter() - t0)
 
-        log.info("loading STT model %s (%s)...", self._cfg.model, self._cfg.compute_type)
-        t0 = time.perf_counter()
-        kwargs: dict = {
-            "device": "cpu",
-            "compute_type": self._cfg.compute_type,
-        }
-        if self._model_dir:
-            kwargs["download_root"] = self._model_dir
-        self._model = WhisperModel(self._cfg.model, **kwargs)
-        log.info("STT model loaded in %.1fs", time.perf_counter() - t0)
+    def preload(self) -> None:
+        """Load model weights into RAM (call before accepting audio)."""
+        self._load_model()
 
     def enqueue(self, seg: AudioSegment, *, priority: int = 5) -> None:
         self._seq += 1
@@ -87,7 +104,7 @@ class STTWorker:
             seg.pcm_f32,
             beam_size=self._cfg.beam_size,
             language=self._cfg.language,
-            vad_filter=True,
+            vad_filter=self._cfg.vad_filter,
             initial_prompt=self._cfg.initial_prompt,
         )
         parts = []
@@ -97,8 +114,23 @@ class STTWorker:
             if s.avg_logprob is not None:
                 logprobs.append(float(s.avg_logprob))
         raw = " ".join(parts).strip()
+        if not raw:
+            log.warning(
+                "STT empty (vad_filter=%s) %.1fs audio [%s %.3f MHz]",
+                self._cfg.vad_filter,
+                seg.duration_s,
+                seg.label,
+                seg.freq_mhz,
+            )
+            return None
         text = postprocess.postprocess(raw, callsign=self._callsign)
         if not text:
+            log.info(
+                "STT filtered by postprocess: %r [%s %.3f MHz]",
+                raw[:80],
+                seg.label,
+                seg.freq_mhz,
+            )
             return None
         conf = float(np.exp(np.mean(logprobs))) if logprobs else 0.0
         direction = postprocess.guess_direction(text, self._callsign)
