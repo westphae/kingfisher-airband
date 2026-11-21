@@ -16,3 +16,10 @@ dist/
 
 # Model cache and recordings (under data_dir, often ~/.local/share)
 models/
+
+# Runtime recordings, rtl_airband output, and logs (keep data/airports tracked)
+archive/
+rtl_airband/
+*.wav
+*.flac
+*.log
