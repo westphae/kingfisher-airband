@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 
 from airband.config import Config, HowgozitCfg
+from airband.freq import is_valid_airband_mhz, normalize_howgozit_freq_mhz
 from airband.planner.channels import GPSFix
 
 log = logging.getLogger(__name__)
@@ -123,10 +124,17 @@ class KingfisherClient:
             vals = row.get("values") or {}
             f = vals.get("freq_mhz")
             if f is not None and str(f).strip():
-                try:
-                    return float(f)
-                except ValueError:
+                norm = normalize_howgozit_freq_mhz(f)
+                if norm is None:
+                    log.warning("howgozit atc_radio ignored invalid freq_mhz: %r", f)
                     continue
+                try:
+                    raw_val = float(str(f).strip())
+                except ValueError:
+                    raw_val = None
+                if raw_val is not None and not is_valid_airband_mhz(raw_val):
+                    log.info("howgozit freq_mhz %r normalized to %.3f MHz", f, norm)
+                return norm
         return None
 
     def push_atc_comm(self, cfg: Config, result: Any) -> None:
